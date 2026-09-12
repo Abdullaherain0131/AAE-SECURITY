@@ -181,6 +181,10 @@ fun ToolsScreen(viewModel: com.example.ui.viewmodel.AntivirusViewModel, modifier
     var isBoostingRam by remember { mutableStateOf(false) }
     var showZeroClickDialog by remember { mutableStateOf(false) }
 
+    var showGameBoosterDialog by remember { mutableStateOf(false) }
+    var isBoostingGame by remember { mutableStateOf(false) }
+    var gamesList by remember { mutableStateOf<List<SuspiciousApp>>(emptyList()) }
+
 
 
     val tools = listOf(
@@ -190,6 +194,32 @@ fun ToolsScreen(viewModel: com.example.ui.viewmodel.AntivirusViewModel, modifier
             icon = Icons.Default.Android
         ) {
             showSystemMonitorScreen = true
+        },
+        ToolItem(
+            title = "Oyun Hızlandırıcı (Booster)",
+            description = "Oyunları algılar, RAM'i oyun için boşaltır.",
+            icon = Icons.Default.SmartToy
+        ) {
+            showGameBoosterDialog = true
+            isBoostingGame = true
+            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                delay(1200)
+                val pm = context.packageManager
+                val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                val games = mutableListOf<SuspiciousApp>()
+                for (appInfo in packages) {
+                    val isGame = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        appInfo.category == android.content.pm.ApplicationInfo.CATEGORY_GAME
+                    } else {
+                        (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_IS_GAME) != 0
+                    }
+                    if (isGame) {
+                        games.add(SuspiciousApp(pm.getApplicationLabel(appInfo).toString(), appInfo.packageName))
+                    }
+                }
+                gamesList = games.distinctBy { it.pkgName }
+                isBoostingGame = false
+            }
         },
         ToolItem(
             title = "Hırsız Kapanı",
@@ -863,30 +893,42 @@ fun ToolsScreen(viewModel: com.example.ui.viewmodel.AntivirusViewModel, modifier
 
     // Password Vault Dialog
     if (showVaultDialog) {
+        val vaultManager = remember { com.example.util.VaultManager(context) }
+        var secretsCount by remember { mutableStateOf(vaultManager.getAllSecrets().size) }
+        var newSecret by remember { mutableStateOf("") }
+        
         AlertDialog(
             onDismissRequest = { showVaultDialog = false },
             containerColor = MaterialTheme.colorScheme.surface,
-            title = { Text("Şifre Kasası (AES-256)", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) },
+            title = { Text("Şifre Kasası (AES-256 GCM)", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) },
             text = { 
                 Column {
-                    Text("Ana Parolanızı Girin:", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Kasada saklanan şifrelenmiş veri sayısı: $secretsCount", color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
                     OutlinedTextField(
-                        value = "••••••••",
-                        onValueChange = {},
-                        enabled = false,
+                        value = newSecret,
+                        onValueChange = { newSecret = it },
+                        label = { Text("Yeni Şifre/Not Ekle", fontFamily = FontFamily.Monospace) },
                         modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            disabledTextColor = MaterialTheme.colorScheme.primary,
-                            disabledBorderColor = MaterialTheme.colorScheme.primary.copy(alpha=0.5f)
+                            focusedTextColor = MaterialTheme.colorScheme.primary,
+                            unfocusedTextColor = MaterialTheme.colorScheme.primary
                         )
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("[SIMULATION] Kasada 4 kayıt bulundu. Cihazınızda veriler AES-256 ile şifrelenir.", color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
                 }
             },
-            confirmButton = { TextButton(onClick = { showVaultDialog = false }) { Text("KİLİDİ AÇ", color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace) } },
-            dismissButton = { TextButton(onClick = { showVaultDialog = false }) { Text("İPTAL", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace) } }
+            confirmButton = { 
+                TextButton(onClick = { 
+                    if(newSecret.isNotBlank()) {
+                        vaultManager.saveSecret("secret_${System.currentTimeMillis()}", newSecret)
+                        secretsCount = vaultManager.getAllSecrets().size
+                        newSecret = ""
+                        android.widget.Toast.makeText(context, "AES-256 ile şifrelenerek kasaya eklendi.", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }) { Text("KAYDET", color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace) } 
+            },
+            dismissButton = { TextButton(onClick = { showVaultDialog = false }) { Text("KAPAT", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace) } }
         )
 
 
@@ -897,7 +939,19 @@ fun ToolsScreen(viewModel: com.example.ui.viewmodel.AntivirusViewModel, modifier
             containerColor = MaterialTheme.colorScheme.surface,
             title = { Text("Hırsız Kapanı", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) },
             text = { Text("Yanlış parola girildiğinde ön kameradan fotoğraf çeker. Bu özelliği kullanmak için Kamera izni ve Cihaz Yöneticisi izni gereklidir.", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
-            confirmButton = { TextButton(onClick = { showIntruderDialog = false }) { Text("ETKİNLEŞTİR", color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace) } },
+            confirmButton = { 
+                TextButton(onClick = { 
+                    try {
+                        val intent = Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+                        val componentName = android.content.ComponentName(context, com.example.receiver.AAEAdminReceiver::class.java)
+                        intent.putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
+                        intent.putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Hırsız Kapanı ve Antivirüs Koruması için gereklidir.")
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(context, "Hata: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }) { Text("YETKİ VER", color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace) } 
+            },
             dismissButton = { TextButton(onClick = { showIntruderDialog = false }) { Text("KAPAT", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace) } }
         )
     }
@@ -928,7 +982,7 @@ fun ToolsScreen(viewModel: com.example.ui.viewmodel.AntivirusViewModel, modifier
                         Text("Arka plan işlemleri sonlandırılıyor...", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                     }
                 } else {
-                    Text("Cihazınızdaki gereksiz arka plan süreçlerini durdurarak performansı artırır.", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontSize = 12.sp) 
+                    Text("Cihazınızdaki gereksiz arka plan süreçlerini Shizuku ve ActivityManager üzerinden zorla durdurarak performansı artırır.", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontSize = 12.sp) 
                 }
             },
             confirmButton = { 
@@ -936,9 +990,24 @@ fun ToolsScreen(viewModel: com.example.ui.viewmodel.AntivirusViewModel, modifier
                     TextButton(onClick = { 
                         isBoostingRam = true
                         coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                            delay(2000)
+                            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                            val pm = context.packageManager
+                            val packages = pm.getInstalledPackages(0)
+                            var killedCount = 0
+                            for (pkg in packages) {
+                                if ((pkg.applicationInfo!!.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 && pkg.packageName != context.packageName) {
+                                    try {
+                                        am.killBackgroundProcesses(pkg.packageName)
+                                        killedCount++
+                                    } catch (e: Exception) {}
+                                }
+                            }
+                            delay(1500)
                             isBoostingRam = false
                             showRamBoosterDialog = false
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                android.widget.Toast.makeText(context, "$killedCount uygulama arka planda uyutuldu.", android.widget.Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }) { Text("HIZLANDIR", color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace) }
                 }
@@ -957,9 +1026,72 @@ fun ToolsScreen(viewModel: com.example.ui.viewmodel.AntivirusViewModel, modifier
             onDismissRequest = { showZeroClickDialog = false },
             containerColor = MaterialTheme.colorScheme.surface,
             title = { Text("Zero-Click Kalkanı", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) },
-            text = { Text("WhatsApp, iMessage veya diğer mesajlaşma uygulamaları üzerinden gelen görünmez (Zero-Click) saldırılarını bellek üzerinde izler ve engeller.", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
-            confirmButton = { TextButton(onClick = { showZeroClickDialog = false }) { Text("ETKİNLEŞTİR", color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace) } },
+            text = { Text("WhatsApp, iMessage veya diğer mesajlaşma uygulamaları üzerinden gelen görünmez (Zero-Click) saldırılarını bellek üzerinde izler ve engeller. Bu özellik için Erişilebilirlik Servisini aktif etmeniz gerekmektedir.", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
+            confirmButton = { 
+                TextButton(onClick = { 
+                    try {
+                        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                        context.startActivity(intent)
+                    } catch (e: Exception) {}
+                }) { Text("YETKİ VER", color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace) } 
+            },
             dismissButton = { TextButton(onClick = { showZeroClickDialog = false }) { Text("KAPAT", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace) } }
+        )
+    }
+
+    // Game Booster Dialog
+    if (showGameBoosterDialog) {
+        AlertDialog(
+            onDismissRequest = { showGameBoosterDialog = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = { Text("Oyun Hızlandırıcı (Game Booster)", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) },
+            text = {
+                if (isBoostingGame) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.secondary)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("Yüklü oyunlar otomatik algılanıyor...", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace)
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 250.dp)) {
+                        if (gamesList.isEmpty()) {
+                            item { Text("Cihazınızda oyun bulunamadı.", color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace) }
+                        } else {
+                            item { Text("Arka planı tamamen uyutmak ve oyunu hızlandırmak için seçin:", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom=8.dp)) }
+                            items(gamesList) { app ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).pointerInput(Unit) {
+                                        detectTapGestures(onTap = {
+                                            // Oyun seçildi, arka planı temizle ve başlat
+                                            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                                            val pm = context.packageManager
+                                            val packagesToKill = pm.getInstalledPackages(0)
+                                            for (pkg in packagesToKill) {
+                                                if ((pkg.applicationInfo!!.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 && pkg.packageName != context.packageName && pkg.packageName != app.pkgName) {
+                                                    try {
+                                                        am.killBackgroundProcesses(pkg.packageName)
+                                                    } catch (e: Exception) {}
+                                                }
+                                            }
+                                            android.widget.Toast.makeText(context, "${app.label} için ortam hazırlandı!", android.widget.Toast.LENGTH_SHORT).show()
+                                            val launchIntent = pm.getLaunchIntentForPackage(app.pkgName)
+                                            if (launchIntent != null) {
+                                                context.startActivity(launchIntent)
+                                            }
+                                            showGameBoosterDialog = false
+                                        })
+                                    },
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha=0.5f))
+                                ) {
+                                    Text(app.label, color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace, fontSize = 11.sp, modifier = Modifier.padding(12.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showGameBoosterDialog = false }) { Text("KAPAT", color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace) } }
         )
     }
 

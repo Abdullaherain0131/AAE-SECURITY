@@ -77,6 +77,15 @@ class RealTimeProtectionService : Service() {
             startForeground(1, notification)
         }
         
+        try {
+            val watchdogIntent = Intent(applicationContext, WatchdogService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                applicationContext.startForegroundService(watchdogIntent)
+            } else {
+                applicationContext.startService(watchdogIntent)
+            }
+        } catch (e: Exception) {}
+        
         return START_STICKY
     }
 
@@ -391,6 +400,22 @@ class RealTimeProtectionService : Service() {
         packageInstallerCallback?.let {
             packageManager.packageInstaller.unregisterSessionCallback(it)
         }
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        val restartServiceIntent = Intent(applicationContext, this.javaClass)
+        restartServiceIntent.setPackage(packageName)
+        val restartServicePendingIntent = PendingIntent.getService(
+            applicationContext, 1, restartServiceIntent,
+            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val alarmService = applicationContext.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+        alarmService.set(
+            android.app.AlarmManager.ELAPSED_REALTIME,
+            android.os.SystemClock.elapsedRealtime() + 1000,
+            restartServicePendingIntent
+        )
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

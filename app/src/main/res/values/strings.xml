@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">AAE Security</string>
+    <string name="accessibility_service_description">Zero-Click Kalkanı için zararlı içerikleri okur.</string>
 </resources>

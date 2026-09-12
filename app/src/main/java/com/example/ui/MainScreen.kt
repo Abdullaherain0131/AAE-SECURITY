@@ -165,7 +165,7 @@ fun MainScreen(viewModel: AntivirusViewModel) {
         )
     )
 
-    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize().background(Color(0xFF040B16))) {
+    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val step = 100f
             val strokeColor = Color(0xFFA0AAB4).copy(alpha = 0.08f)

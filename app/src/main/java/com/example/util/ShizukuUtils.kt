@@ -18,16 +18,25 @@ object ShizukuUtils {
     }
 
     fun hasPermission(): Boolean {
-        return if (isAvailable()) {
-            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-        } else {
+        return try {
+            if (isAvailable()) {
+                Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.e("ShizukuUtils", "hasPermission error", e)
             false
         }
     }
 
     fun requestPermission(requestCode: Int) {
-        if (isAvailable() && !hasPermission()) {
-            Shizuku.requestPermission(requestCode)
+        try {
+            if (isAvailable()) {
+                Shizuku.requestPermission(requestCode)
+            }
+        } catch (e: Exception) {
+            Log.e("ShizukuUtils", "requestPermission error", e)
         }
     }
 
