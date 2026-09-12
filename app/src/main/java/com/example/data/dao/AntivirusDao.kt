@@ -25,6 +25,19 @@ interface AntivirusDao {
     @Query("SELECT * FROM threats WHERE packageName = :packageName LIMIT 1")
     suspend fun findThreatByPackage(packageName: String): ThreatEntity?
 
+    @Query("SELECT packageName FROM threats WHERE status = 'GÜVENLİ_LİSTE'")
+    suspend fun getWhitelistedPackageNames(): List<String>
+
+    /**
+     * Bir paketin en eski (en düşük id) satırı dışındakilerini siler.
+     * Eski sürümün satır çoğaltan insert'i biriktirdiği mükerrer kayıtları
+     * [com.example.data.AntivirusRepository.recordDetectedThreat] tek seferde toplar.
+     * Whitelist satırı varsa çağrılmadan önce erken dönüş yapıldığı için buraya
+     * gelinmez; korunacak satır daima mevcut AKTİF kaydın ta kendisidir.
+     */
+    @Query("DELETE FROM threats WHERE packageName = :packageName AND id != :keepId")
+    suspend fun pruneDuplicateThreats(packageName: String, keepId: Long)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertThreat(threat: ThreatEntity): Long
 

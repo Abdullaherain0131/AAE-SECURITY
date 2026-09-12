@@ -598,7 +598,9 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
         if (_isScanning.value) return
 
         scanJob?.cancel()
-        scanJob = viewModelScope.launch(Dispatchers.Default) {
+        // Dispatchers.IO: paket sorguları ve yeni eklenen depo APK taraması
+        // dosya sistemi erişimi yapar; Default havuzunu bloklamamalı.
+        scanJob = viewModelScope.launch(Dispatchers.IO) {
             _isScanning.value = true
             _scanProgress.value = 0f
             _scannedCount.value = 0
@@ -627,6 +629,13 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
 
             val newlyFoundThreats = mutableListOf<ThreatEntity>()
             var currentStep = 0
+
+            // Kullanıcının güvenli listeye aldığı paketler analiz edilmez: sonuç
+            // kaydedilmeyecek bir paket için sertifika ayrıştırma pahalıdır ve
+            // liste kararının her taramada sorgulanması güveni zayıflatır.
+            // (Kullanıcı istediğinde listeden çıkarabilir, sonraki taramada yeniden
+            // değerlendirilir.)
+            val whitelistedPackages = repository.whitelistedPackageNames().toHashSet()
 
             // Dinamik gecikme hesaplayıcı: Dosya adının uzunluğuna ve rastgeleliğe göre "dosya boyutu/karmaşıklık" simülasyonu
             val calculateDelay: (String, Long, Long) -> Long = { name, minDelay, maxDelay ->
@@ -671,37 +680,49 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
                         _scannedCount.value = currentStep
                         _scanProgress.value = currentStep.toFloat() / totalSteps.toFloat()
 
+                        if (pkg.packageName in whitelistedPackages) {
+                            delay(calculateDelay(appName, 40L, 80L))
+                            continue
+                        }
+
                         val result = ThreatEngine.evaluatePackageInfo(context, pkg)
                         if (result.isThreat && result.threatEntity != null) {
                             newlyFoundThreats.add(result.threatEntity)
                             _scanThreatsFound.value = newlyFoundThreats.toList()
-                            repository.insertThreat(result.threatEntity)
+                            repository.recordDetectedThreat(result.threatEntity)
                         }
                         delay(calculateDelay(appName, 150L, 350L))
                     }
                 }
 
                 "FULL" -> {
-                    // 2. TAM TARAMA: Tüm uygulamalar + Medya/Belge/Arşiv Dosyaları
-                    val filePartitions = listOf(
-                        "Uygulama Paketleri (APK)",
-                        "Sıkıştırılmış Arşiv Dosyaları (.zip, .rar)",
-                        "Office Belgeleri (.docx, .xlsx)",
-                        "PDF ve Metin Belgeleri (.pdf, .txt)",
-                        "İndirilen Medya Dosyaları",
-                        "Geçici İndirmeler & Önbellek"
-                    )
+                    // 2. TAM TARAMA: Tüm uygulamalar + Depodaki kurulmamış APK dosyaları
                     val allPackages = packages
-                    val totalSteps = (filePartitions.size + allPackages.size).coerceAtLeast(1)
+
+                    // Depo taraması gerçek dosya I/O olduğundan ağır sürecin (Dispatchers.IO)
+                    // dışında çağrılmamalı; bu zaten IO dispatcher'da çalışıyor.
+                    // Önce dosyaları bul, sonra ilerlemeyi onlarla birlikte akıt.
+                    val apkScan = com.example.scanner.ApkFileScanner.scanDownloadedApks(context) { file, _ ->
+                        _currentAppBeingScanned.value = "Depo APK: ${file.name}"
+                    }
+                    val apkThreats = apkScan.threats
+                    apkThreats.forEach { repository.recordDetectedThreat(it) }
+                    if (apkThreats.isNotEmpty()) {
+                        newlyFoundThreats.addAll(apkThreats)
+                        _scanThreatsFound.value = newlyFoundThreats.toList()
+                    }
+
+                    val totalSteps = (allPackages.size + 1).coerceAtLeast(1) // +1: depo taraması adımı
                     _totalAppsToScan.value = totalSteps
 
-                    for (part in filePartitions) {
-                        currentStep++
-                        _currentAppBeingScanned.value = "Tarama: $part"
-                        _scannedCount.value = currentStep
-                        _scanProgress.value = currentStep.toFloat() / totalSteps.toFloat()
-                        delay(calculateDelay(part, 300L, 700L))
-                    }
+                    // Depo taraması adımı (yukarıda tamamlandı; ilerlemede tek adım olarak gösterilir)
+                    currentStep++
+                    _currentAppBeingScanned.value =
+                        if (apkScan.scannedFiles.isEmpty()) "Depo APK taraması: dosya bulunamadı"
+                        else "Depo APK taraması: ${apkScan.scannedFiles.size} dosya incelendi"
+                    _scannedCount.value = currentStep
+                    _scanProgress.value = currentStep.toFloat() / totalSteps.toFloat()
+                    delay(400)
 
                     for (pkg in allPackages) {
                         currentStep++
@@ -714,12 +735,18 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
                         _scanProgress.value = currentStep.toFloat() / totalSteps.toFloat()
 
                         // Ön ek istisnası yok: klon tespiti ancak her paket taranınca
-                        // çalışır (yukarıdaki NOT'a bakınız).
+                        // çalışır (yukarıdaki NOT'a bakınız). Tek istisna kullanıcının
+                        // açık kararı olan güvenli listedir.
+                        if (pkg.packageName in whitelistedPackages) {
+                            delay(calculateDelay(appName, 40L, 80L))
+                            continue
+                        }
+
                         val result = ThreatEngine.evaluatePackageInfo(context, pkg)
                         if (result.isThreat && result.threatEntity != null) {
                             newlyFoundThreats.add(result.threatEntity)
                             _scanThreatsFound.value = newlyFoundThreats.toList()
-                            repository.insertThreat(result.threatEntity)
+                            repository.recordDetectedThreat(result.threatEntity)
                         }
                         delay(calculateDelay(appName, 150L, 400L))
                     }
@@ -756,7 +783,7 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
                     if (rootAndSystemThreats.isNotEmpty()) {
                         newlyFoundThreats.addAll(rootAndSystemThreats)
                         _scanThreatsFound.value = newlyFoundThreats.toList()
-                        rootAndSystemThreats.forEach { repository.insertThreat(it) }
+                        rootAndSystemThreats.forEach { repository.recordDetectedThreat(it) }
                     }
                     delay(800L)
 
@@ -771,12 +798,18 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
                         _scanProgress.value = currentStep.toFloat() / totalSteps.toFloat()
 
                         // Derin taramada ön ek istisnası yok: her paket imza ve izin
-                        // denetiminden geçer (yukarıdaki NOT'a bakınız).
+                        // denetiminden geçer (yukarıdaki NOT'a bakınız). Tek istisna
+                        // kullanıcının güvenli liste kararıdır.
+                        if (pkg.packageName in whitelistedPackages) {
+                            delay(calculateDelay(appName, 40L, 80L))
+                            continue
+                        }
+
                         val result = ThreatEngine.evaluatePackageInfo(context, pkg)
                         if (result.isThreat && result.threatEntity != null) {
                             newlyFoundThreats.add(result.threatEntity)
                             _scanThreatsFound.value = newlyFoundThreats.toList()
-                            repository.insertThreat(result.threatEntity)
+                            repository.recordDetectedThreat(result.threatEntity)
                         }
                         delay(calculateDelay(appName, 250L, 600L))
                     }

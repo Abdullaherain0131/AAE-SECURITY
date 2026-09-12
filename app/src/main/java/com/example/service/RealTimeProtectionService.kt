@@ -461,11 +461,10 @@ class RealTimeProtectionService : Service() {
                             val threat = result.threatEntity ?: continue
                             if (!result.isThreat) continue
 
-                            // Kullanıcının güvenli listeye aldığı paketi tekrar tehdit yapmayalım.
-                            val existing = repository.findThreatByPackage(pkg)
-                            if (existing != null && existing.status == "GÜVENLİ_LİSTE") continue
+                            // Whitelist kontrolü ve kayıt tek yerde: recordDetectedThreat
+                            // güvenli listeye alınmış paketi yazar bile.
+                            val recorded = repository.recordDetectedThreat(threat) ?: continue
 
-                            repository.insertThreat(threat)
                             repository.logEvent(
                                 title = "Arka Plan Bütünlük Taraması",
                                 description = "${threat.appName} ($pkg) yeniden değerlendirildi ve " +

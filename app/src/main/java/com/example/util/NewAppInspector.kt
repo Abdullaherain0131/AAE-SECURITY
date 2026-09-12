@@ -90,7 +90,10 @@ object NewAppInspector {
         val threat = result.threatEntity
 
         if (result.isThreat && threat != null) {
-            repository.insertThreat(threat)
+            // recordDetectedThreat whitelist'e saygı duyar ve satır çoğalmasını önler;
+            // kurulum anı tespitinde null dönmesi yalnızca güvenli liste kararından olur,
+            // o durumda yukarıda zaten ele alındı ve buraya gelinmez.
+            repository.recordDetectedThreat(threat)
             repository.logEvent(
                 title = "Gerçek Zamanlı Tehdit Tespit Edildi!",
                 description = "${threat.appName} (${threat.packageName}) cihazınıza yüklendi ve " +

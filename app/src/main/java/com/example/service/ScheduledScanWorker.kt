@@ -3,6 +3,7 @@ package com.example.service
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.example.AntivirusApplication
 import com.example.data.AntivirusDatabase
 import com.example.data.entity.ScanRecordEntity
 import com.example.scanner.ThreatEngine
@@ -15,18 +16,21 @@ class ScheduledScanWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            val db = com.example.data.AntivirusDatabase.getDatabase(applicationContext)
+            val db = AntivirusDatabase.getDatabase(applicationContext)
+            val repository = (applicationContext as AntivirusApplication).repository
             val pm = applicationContext.packageManager
-            
+
             // OOM Korumalı Stream Ayrıştırma simülasyonu ve yüklü paket taraması
             val packages = pm.getInstalledPackages(0).take(20) // Pil koruması için limitli arka plan taraması
             val newlyFoundThreats = mutableListOf<com.example.data.entity.ThreatEntity>()
-            
+
             for (pkg in packages) {
                 val result = ThreatEngine.evaluatePackageInfo(applicationContext, pkg)
                 if (result.isThreat && result.threatEntity != null) {
                     newlyFoundThreats.add(result.threatEntity)
-                    db.antivirusDao().insertThreat(result.threatEntity)
+                    // Whitelist'e saygılı tek kayıt yolu; düz insert tehlike
+                    // satırlarının her taramada çoğalmasına yol açıyordu.
+                    repository.recordDetectedThreat(result.threatEntity)
                 }
             }
             
