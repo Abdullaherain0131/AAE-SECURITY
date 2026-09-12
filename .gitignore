@@ -26,3 +26,5 @@ local.properties
 __pycache__/
 *.pyc
 *.py
+*.py
+*.pyc
