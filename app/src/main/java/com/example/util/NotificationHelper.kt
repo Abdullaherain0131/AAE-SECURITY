@@ -15,6 +15,10 @@ object NotificationHelper {
     private const val CHANNEL_NAME = "Tarama ve Güvenlik Bildirimleri"
     private const val NOTIFICATION_ID = 1001
 
+    // Ayrı bir kimlik: eskiden NOTIFICATION_ID + 1 (1002) kullanılıyordu ve bu,
+    // WatchdogService'in ön plan bildirimiyle çakışıyordu.
+    private const val NOTIFICATION_ID_THREAT = 1102
+
     fun showScanCompleteNotification(context: Context, threatsFound: Int) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -81,6 +85,6 @@ object NotificationHelper {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
 
-        notificationManager.notify(NOTIFICATION_ID + 1, builder.build())
+        notificationManager.notify(NOTIFICATION_ID_THREAT, builder.build())
     }
 }

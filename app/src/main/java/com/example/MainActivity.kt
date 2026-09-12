@@ -71,7 +71,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val isDarkTheme by viewModel.isDarkTheme.collectAsStateWithLifecycle()
-            AntivirusTheme() {
+            AntivirusTheme(darkTheme = isDarkTheme) {
                 MainScreen(viewModel = viewModel)
             }
         }

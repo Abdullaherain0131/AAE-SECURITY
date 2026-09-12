@@ -92,6 +92,22 @@ class ProtectionPreferences(context: Context) {
         get() = prefs.getStringSet(KEY_DYNAMIC_THREAT_SIGNATURES, emptySet()) ?: emptySet()
         set(value) = prefs.edit().putStringSet(KEY_DYNAMIC_THREAT_SIGNATURES, value).apply()
 
+    /**
+     * Tehdit istihbaratının indirileceği JSON adresi (HTTPS).
+     *
+     * Boş bırakılırsa uygulama tamamen çevrimdışı çalışır ve gömülü kümeyi kullanır;
+     * bu varsayılan davranıştır. Bir adres girildiğinde [com.example.worker.MalwareSyncWorker]
+     * yalnızca Wi-Fi bağlıyken 12 saatte bir günceller.
+     */
+    var threatIntelFeedUrl: String
+        get() = prefs.getString(KEY_INTEL_FEED_URL, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_INTEL_FEED_URL, value.trim()).apply()
+
+    /** Son başarılı istihbarat senkronizasyonu (epoch ms). 0 = hiç yapılmadı. */
+    var lastIntelSyncTimestamp: Long
+        get() = prefs.getLong(KEY_LAST_INTEL_SYNC, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_INTEL_SYNC, value).apply()
+
     companion object {
         private const val KEY_REALTIME_PROTECTION = "key_realtime_protection"
         private const val KEY_AUTOSCAN_NEW_APPS = "key_autoscan_new_apps"
@@ -116,6 +132,8 @@ class ProtectionPreferences(context: Context) {
         private const val KEY_SECONDARY_DNS = "key_secondary_dns"
         private const val KEY_DYNAMIC_BLOCKED_KEYWORDS = "key_dynamic_blocked_keywords"
         private const val KEY_DYNAMIC_THREAT_SIGNATURES = "key_dynamic_threat_signatures"
+        private const val KEY_INTEL_FEED_URL = "key_intel_feed_url"
+        private const val KEY_LAST_INTEL_SYNC = "key_last_intel_sync"
 
         val DNS_PROFILES = listOf(
             DnsProfilePreset(

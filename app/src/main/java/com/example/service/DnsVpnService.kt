@@ -25,6 +25,9 @@ import kotlinx.coroutines.launch
 
 class DnsVpnService : VpnService(), Runnable {
     companion object {
+        private const val KEYWORD_REFRESH_MS = 60_000L
+        private const val BLOCK_LOG_COOLDOWN_MS = 5 * 60_000L
+
         private val _isVpnActive = MutableStateFlow(false)
         val isVpnActive = _isVpnActive.asStateFlow()
         
@@ -71,6 +74,58 @@ class DnsVpnService : VpnService(), Runnable {
     private var targetDnsPrimary = "1.1.1.1"
     private var targetDnsSecondary = "1.0.0.1"
 
+    /** Her DNS paketinde SharedPreferences okumamak için anahtar kelimeler önbelleklenir. */
+    @Volatile private var cachedKeywords: List<String> = com.example.util.DnsFilter.DEFAULT_BLOCKED_KEYWORDS
+    @Volatile private var keywordsLoadedAt = 0L
+
+    /** Aynı alan adı için olay kaydını dakikada bir kereye indirir. */
+    private val blockLogTimestamps = HashMap<String, Long>()
+
+    /**
+     * Engel listesini tazeler.
+     *
+     * Kaynak [com.example.data.intel.ThreatIntelStore]: gömülü küme çevrimdışı
+     * çalışır, Wi-Fi'da indirilen güncelleme onu genişletir. Kullanıcının elle
+     * eklediği kelimeler (`dynamicBlockedKeywords`) her zaman üstüne eklenir.
+     */
+    private fun currentBlockedKeywords(): List<String> {
+        val now = System.currentTimeMillis()
+        if (now - keywordsLoadedAt > KEYWORD_REFRESH_MS) {
+            keywordsLoadedAt = now
+            val fromIntel = try {
+                com.example.data.intel.ThreatIntelStore.current(applicationContext).blockedDomainKeywords
+            } catch (e: Exception) {
+                emptySet<String>()
+            }
+            val userDefined = try {
+                ProtectionPreferences(applicationContext).dynamicBlockedKeywords
+            } catch (e: Exception) {
+                emptySet<String>()
+            }
+            cachedKeywords = (com.example.util.DnsFilter.DEFAULT_BLOCKED_KEYWORDS + fromIntel + userDefined).distinct()
+        }
+        return cachedKeywords
+    }
+
+    private fun logBlockedDomain(domain: String, keyword: String) {
+        val now = System.currentTimeMillis()
+        synchronized(blockLogTimestamps) {
+            val last = blockLogTimestamps[domain]
+            if (last != null && now - last < BLOCK_LOG_COOLDOWN_MS) return
+            if (blockLogTimestamps.size > 256) blockLogTimestamps.clear()
+            blockLogTimestamps[domain] = now
+        }
+
+        val repository = (applicationContext as com.example.AntivirusApplication).repository
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            repository.logEvent(
+                title = "Ağ Kalkanı: Bağlantı Engellendi",
+                description = "$domain adresine yapılan DNS sorgusu \"$keyword\" filtresiyle eşleşti ve engellendi.",
+                severity = "WARNING"
+            )
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
         if (action == "STOP") {
@@ -104,7 +159,7 @@ class DnsVpnService : VpnService(), Runnable {
         
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("$profileName Aktif")
-            .setContentText("Ağ trafiği şifreleniyor: $targetDnsPrimary")
+            .setContentText("DNS istekleri $targetDnsPrimary üzerinden filtreleniyor")
             .setSmallIcon(android.R.drawable.ic_secure)
             .build()
             
@@ -194,45 +249,33 @@ class DnsVpnService : VpnService(), Runnable {
                 System.arraycopy(packet, ipHeaderLen + 8, dnsQuery, 0, dnsDataLen)
                 
                 // Oltalama ve Zararlı Bağlantı Filtresi (Anti-Phishing / AdBlock)
-                val queryStr = String(dnsQuery, kotlin.text.Charsets.US_ASCII).lowercase()
-                val defaultBlockedKeywords = listOf(
-                    "phish", "free-robux", "malware", "crypto-miner"
-                )
-                
-                val prefs = com.example.util.ProtectionPreferences(applicationContext)
-                val dynamicBlockedKeywords = prefs.dynamicBlockedKeywords
-                
-                var isBlocked = false
-                
-                for (keyword in defaultBlockedKeywords) {
-                    if (queryStr.contains(keyword)) {
-                        isBlocked = true
-                        break
-                    }
-                }
-                
-                if (!isBlocked) {
-                    for (keyword in dynamicBlockedKeywords) {
-                        if (queryStr.contains(keyword)) {
-                            isBlocked = true
-                            break
-                        }
-                    }
+                // Ham ASCII üzerinde contains() yerine sorguyu gerçekten çözümleyip
+                // alan adı etiketi sınırlarına göre eşleştiriyoruz.
+                val domain = com.example.util.DnsFilter.extractQueryName(dnsQuery, dnsDataLen)
+                val matchedKeyword = if (domain != null) {
+                    com.example.util.DnsFilter.findBlockedKeyword(domain, currentBlockedKeywords())
+                } else {
+                    null
                 }
 
                 try {
-                    if (isBlocked) {
-                        // Drop the packet silently (Sinkhole/Blackhole)
-                        // Or we can return a dummy response. For simplicity, dropping acts as a block.
-                        val repository = (applicationContext as com.example.AntivirusApplication).repository
-                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                            repository.logEvent(
-                                title = "Ağ Kalkanı: Bağlantı Engellendi",
-                                description = "Zararlı veya oltalama şüphesi olan bir bağlantı (İçerik: Filtrelendi) VPN seviyesinde bloklandı.",
-                                severity = "WARNING"
+                    if (matchedKeyword != null && domain != null) {
+                        logBlockedDomain(domain, matchedKeyword)
+
+                        // Paketi sessizce düşürmek istemciyi DNS zaman aşımına kadar
+                        // bekletiyordu; NXDOMAIN anında "yok" cevabı verir.
+                        val nxDomain = com.example.util.DnsFilter.buildNxDomainResponse(dnsQuery, dnsDataLen)
+                        if (nxDomain != null) {
+                            val respPacket = buildResponsePacket(
+                                clientIp = clientIpBytes,
+                                dnsServerIp = primaryIpBytes,
+                                clientPort = srcPort,
+                                dnsData = nxDomain,
+                                dnsDataLen = nxDomain.size
                             )
+                            outputStream.write(respPacket)
                         }
-                        continue // Drop packet
+                        continue
                     }
 
                     val outPacket = DatagramPacket(dnsQuery, dnsDataLen, primaryAddr, 53)
