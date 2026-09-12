@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.motion.rememberBreathPhase
 import com.example.util.ShizukuUtils
 import kotlinx.coroutines.delay
 import rikka.shizuku.Shizuku
@@ -51,16 +52,11 @@ fun ShizukuStatusCard(
     }
 
     val statusColor = if (isShizukuRunning && hasPermission) secondaryColor else if (isShizukuRunning) Color(0xFFFFD54F) else errorColor
-    
-    val infiniteTransition = rememberInfiniteTransition(label = "shizukuPulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "pulse"
-    )
+
+    // Kenarlık nabzı: rememberBreathPhase hareket azaltma açıkken sabit 0.5f
+    // döndürür, dolayısıyla azaltan kullanıcıda kenarlık sabit yarı opakta kalır.
+    val breathPhase by rememberBreathPhase(durationMillis = 3000)
+    val pulseAlpha = 0.3f + 0.5f * breathPhase
 
     Row(
         modifier = Modifier

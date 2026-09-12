@@ -40,10 +40,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 
+/**
+ * Yüklü model hakkında **ölçülebilir** bilgiler.
+ *
+ * Burada eskiden `accuracy` ve `errorRate` alanları vardı; değerleri sabit "99.2%"
+ * ya da her zaman 0.0f olan `currentLoss`tan türetilen "%100.0" idi. Hiçbir
+ * doğrulama kümesi çalıştırılmadığı için ikisi de ölçüm değil iddiaydı.
+ * Yerlerine modelin kendisinden okunabilen gerçekler kondu.
+ */
 data class AiModelInfo(
     val name: String,
-    val accuracy: String,
-    val errorRate: String,
+    /** Modelin bildirdiği tensor biçimi, ör. "50 → 1". */
+    val shape: String,
+    /** Çıkarımın tespitte kullanılıp kullanılamayacağı ve nedeni. */
+    val specStatus: String,
     val parameters: String,
     val isActive: Boolean = false
 )
@@ -164,8 +174,8 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
         listOf(
             AiModelInfo(
                 name = prefs.activeAiModelName,
-                accuracy = "99.2%",
-                errorRate = "0.008",
+                shape = "—",
+                specStatus = "Model bilgisi henüz okunmadı",
                 parameters = prefs.activeAiModelParams,
                 isActive = true
             )
@@ -266,8 +276,13 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
                 _aiUploadStatusMessage.value = msg
                 
                 val modelName = com.example.ai.AaeSecurityEngine.loadedModelName
-                val loss = com.example.ai.AaeSecurityEngine.currentLoss
-                val acc = (1.0f - loss) * 100f
+                val shape = "${com.example.ai.AaeSecurityEngine.inputLength} \u2192 " +
+                    "${com.example.ai.AaeSecurityEngine.outputLength}"
+                val specStatus = if (com.example.ai.AaeSecurityEngine.isInferenceTrustworthy) {
+                    "Özellik şeması v${com.example.ai.PackageFeatureExtractor.SPEC_VERSION} ile uyumlu — çıkarım etkin"
+                } else {
+                    "Özellik şeması bildirilmemiş — çıkarım tespit kararlarında kullanılmıyor"
+                }
                 
                 // Parse the message to extract real size if possible
                 var computedSize = "Bilinmiyor"
@@ -286,8 +301,8 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
                 
                 val newModel = AiModelInfo(
                     name = modelName,
-                    accuracy = String.format(java.util.Locale.US, "%.1f%%", acc),
-                    errorRate = String.format(java.util.Locale.US, "%.3f", loss),
+                    shape = shape,
+                    specStatus = specStatus,
                     parameters = paramsSize,
                     isActive = true
                 )
@@ -320,11 +335,100 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
 
     private var scanJob: Job? = null
 
-    // Dynamic metrics
-    private val _memUsage = MutableStateFlow(42)
+    // ---------------------------------------------------------------- sistem ölçümleri
+
+    /**
+     * Kullanılan RAM yüzdesi (0..100).
+     *
+     * Öncesinde bu akış `MutableStateFlow(42)` olarak doğuyor ve hiç güncellenmiyordu;
+     * gösterge panosu da bunu kullanmak yerine kendi içinde `(40..85).random()`
+     * çalıştırıyordu. Yani ekrandaki sayı ne cihazdan geliyordu ne de bir yerde
+     * ölçülüyordu. Artık [android.app.ActivityManager.MemoryInfo] okunuyor.
+     */
+    private val _memUsage = MutableStateFlow(0)
     val memUsage: StateFlow<Int> = _memUsage.asStateFlow()
-    private val _netTraffic = MutableStateFlow(12)
+
+    /**
+     * Cihaz genelinde anlık ağ hızı, KB/sn.
+     *
+     * [android.net.TrafficStats] sayaçlarının iki örnek arasındaki farkından
+     * hesaplanır. Sayaç cihaz açılışından beri arttığı için ilk örnekte bir
+     * referans alınır ve değer ancak ikinci örnekten sonra yayınlanır.
+     */
+    private val _netTraffic = MutableStateFlow(0)
     val netTraffic: StateFlow<Int> = _netTraffic.asStateFlow()
+
+    /** Toplam RAM, insan okunur biçimde ("5,7 GB"). Ölçüm alınamadıysa boş. */
+    private val _totalMemoryLabel = MutableStateFlow("")
+    val totalMemoryLabel: StateFlow<String> = _totalMemoryLabel.asStateFlow()
+
+    /**
+     * Ölçümler gerçekten alınabiliyor mu?
+     *
+     * Bazı cihazlarda [android.net.TrafficStats] desteklenmez ve `UNSUPPORTED`
+     * döner. Bu durumda uydurma bir sayı göstermek yerine arayüz "—" gösterebilsin
+     * diye ayrı bir bayrak yayınlıyoruz.
+     */
+    private val _isNetMeteringSupported = MutableStateFlow(true)
+    val isNetMeteringSupported: StateFlow<Boolean> = _isNetMeteringSupported.asStateFlow()
+
+    private fun startSystemMetricsMonitor() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val activityManager = getApplication<Application>()
+                .getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            val memoryInfo = android.app.ActivityManager.MemoryInfo()
+
+            var lastBytes = -1L
+            var lastSampleAt = 0L
+
+            while (isActive) {
+                try {
+                    activityManager.getMemoryInfo(memoryInfo)
+                    val total = memoryInfo.totalMem
+                    if (total > 0) {
+                        val used = total - memoryInfo.availMem
+                        _memUsage.value = ((used * 100) / total).toInt().coerceIn(0, 100)
+                        if (_totalMemoryLabel.value.isEmpty()) {
+                            _totalMemoryLabel.value = formatBytes(total)
+                        }
+                    }
+
+                    val rx = android.net.TrafficStats.getTotalRxBytes()
+                    val tx = android.net.TrafficStats.getTotalTxBytes()
+                    if (rx == android.net.TrafficStats.UNSUPPORTED.toLong() ||
+                        tx == android.net.TrafficStats.UNSUPPORTED.toLong()
+                    ) {
+                        _isNetMeteringSupported.value = false
+                        _netTraffic.value = 0
+                    } else {
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        val bytes = rx + tx
+                        if (lastBytes >= 0 && now > lastSampleAt) {
+                            val deltaBytes = (bytes - lastBytes).coerceAtLeast(0L)
+                            val deltaSeconds = (now - lastSampleAt) / 1000.0
+                            val kbPerSecond = (deltaBytes / 1024.0 / deltaSeconds).toInt()
+                            _netTraffic.value = kbPerSecond.coerceIn(0, 1_000_000)
+                        }
+                        lastBytes = bytes
+                        lastSampleAt = now
+                    }
+                } catch (e: Exception) {
+                    // Ölçüm alınamadı: son bilinen değer korunur. Uydurma bir sayı
+                    // üretmek, göstergeyi tamamen işe yaramaz hale getirirdi.
+                }
+
+                // Tarama sırasında daha sık: kullanıcı o an sistemin yüklendiğini
+                // görmek istiyor. Boştayken 3 sn yeterli ve pil dostu.
+                delay(if (_isScanning.value) 1_000L else 3_000L)
+            }
+        }
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        val gb = bytes / (1024.0 * 1024.0 * 1024.0)
+        return if (gb >= 1.0) String.format(java.util.Locale.getDefault(), "%.1f GB", gb)
+        else String.format(java.util.Locale.getDefault(), "%.0f MB", bytes / (1024.0 * 1024.0))
+    }
 
     private val _batteryPercentage = MutableStateFlow(100f)
     val batteryPercentage: StateFlow<Float> = _batteryPercentage.asStateFlow()
@@ -341,6 +445,7 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
         }
         refreshAudit()
         startBatteryMonitor()
+        startSystemMetricsMonitor()
     }
 
     private fun startBatteryMonitor() {
@@ -514,13 +619,11 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
                 emptyList()
             }
 
-            val safePrefixes = listOf(
-                "com.google.android.", "com.android.", "android",
-                "com.whatsapp", "com.instagram", "com.facebook", "com.twitter", "com.zhiliaoapp.musically",
-                "com.spotify", "com.netflix", "com.xiaomi", "com.miui", "com.microsoft", "com.skype", 
-                "org.telegram", "com.viber", "com.snapchat", "com.linkedin", "com.pinterest", "com.reddit", 
-                "com.amazon", "com.ebay", "com.discord", "com.sec.android", "com.samsung", "com.duolingo"
-            )
+            // NOT: Burada eskiden "güvenli ön ek" listesi (com.whatsapp, com.instagram…)
+            // vardı ve bu ön eklerle başlayan paketler tarama dışı bırakılıyordu. Paket
+            // adı ucuzdur: sahte bir "com.whatsapp.pro" APK'sı tam taramadan sırf adı
+            // yüzünden geçebilirdi. Güven kararı paket adından değil, ThreatEngine'in
+            // imza doğrulamasından gelir; her paket taranır.
 
             val newlyFoundThreats = mutableListOf<ThreatEntity>()
             var currentStep = 0
@@ -606,24 +709,19 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
                             pkg.applicationInfo?.let { pm.getApplicationLabel(it).toString() } ?: pkg.packageName
                         } catch (e: Exception) { pkg.packageName }
 
-                        val pkgNameLower = pkg.packageName.lowercase()
-                        val isTrusted = safePrefixes.any { pkgNameLower.startsWith(it) || pkgNameLower == it }
-
-                        _currentAppBeingScanned.value = if (isTrusted) "✓ $appName [Doğrulandı]" else "İnceleniyor: $appName"
+                        _currentAppBeingScanned.value = "İnceleniyor: $appName"
                         _scannedCount.value = currentStep
                         _scanProgress.value = currentStep.toFloat() / totalSteps.toFloat()
 
-                        if (!isTrusted) {
-                            val result = ThreatEngine.evaluatePackageInfo(context, pkg)
-                            if (result.isThreat && result.threatEntity != null) {
-                                newlyFoundThreats.add(result.threatEntity)
-                                _scanThreatsFound.value = newlyFoundThreats.toList()
-                                repository.insertThreat(result.threatEntity)
-                            }
-                            delay(calculateDelay(appName, 150L, 400L))
-                        } else {
-                            delay(calculateDelay(appName, 50L, 100L)) // Akıcı, gerçekçi ilerleme
+                        // Ön ek istisnası yok: klon tespiti ancak her paket taranınca
+                        // çalışır (yukarıdaki NOT'a bakınız).
+                        val result = ThreatEngine.evaluatePackageInfo(context, pkg)
+                        if (result.isThreat && result.threatEntity != null) {
+                            newlyFoundThreats.add(result.threatEntity)
+                            _scanThreatsFound.value = newlyFoundThreats.toList()
+                            repository.insertThreat(result.threatEntity)
                         }
+                        delay(calculateDelay(appName, 150L, 400L))
                     }
                 }
 
@@ -668,24 +766,19 @@ class AntivirusViewModel(application: Application) : AndroidViewModel(applicatio
                             pkg.applicationInfo?.let { pm.getApplicationLabel(it).toString() } ?: pkg.packageName
                         } catch (e: Exception) { pkg.packageName }
 
-                        val pkgNameLower = pkg.packageName.lowercase()
-                        val isTrusted = safePrefixes.any { pkgNameLower.startsWith(it) || pkgNameLower == it }
-
                         _currentAppBeingScanned.value = "Nöral Sandbox: $appName"
                         _scannedCount.value = currentStep
                         _scanProgress.value = currentStep.toFloat() / totalSteps.toFloat()
 
-                        if (!isTrusted) {
-                            val result = ThreatEngine.evaluatePackageInfo(context, pkg)
-                            if (result.isThreat && result.threatEntity != null) {
-                                newlyFoundThreats.add(result.threatEntity)
-                                _scanThreatsFound.value = newlyFoundThreats.toList()
-                                repository.insertThreat(result.threatEntity)
-                            }
-                            delay(calculateDelay(appName, 250L, 600L))
-                        } else {
-                            delay(calculateDelay(appName, 100L, 200L))
+                        // Derin taramada ön ek istisnası yok: her paket imza ve izin
+                        // denetiminden geçer (yukarıdaki NOT'a bakınız).
+                        val result = ThreatEngine.evaluatePackageInfo(context, pkg)
+                        if (result.isThreat && result.threatEntity != null) {
+                            newlyFoundThreats.add(result.threatEntity)
+                            _scanThreatsFound.value = newlyFoundThreats.toList()
+                            repository.insertThreat(result.threatEntity)
                         }
+                        delay(calculateDelay(appName, 250L, 600L))
                     }
                 }
             }

@@ -1,5 +1,4 @@
 package com.example.ui.screens
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 
@@ -18,7 +17,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -71,6 +69,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.example.ui.components.ThreatBottomSheet
+import com.example.ui.motion.pressScale
+import com.example.ui.theme.Motion
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -450,25 +450,22 @@ fun ToolsScreen(viewModel: com.example.ui.viewmodel.AntivirusViewModel, modifier
             itemsIndexed(tools) { index, tool ->
                 var itemVisible by remember { mutableStateOf(false) }
                 LaunchedEffect(Unit) {
-                    kotlinx.coroutines.delay(index * 120L)
+                    kotlinx.coroutines.delay(
+                        index.coerceIn(0, Motion.StaggerMaxSteps) * Motion.StaggerStep.toLong()
+                    )
                     itemVisible = true
                 }
                 androidx.compose.animation.AnimatedVisibility(
                     visible = itemVisible,
-                    enter = androidx.compose.animation.scaleIn(initialScale = 0.8f, animationSpec = spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy, stiffness = androidx.compose.animation.core.Spring.StiffnessLow)) + androidx.compose.animation.fadeIn()
+                    enter = androidx.compose.animation.scaleIn(initialScale = 0.8f, animationSpec = Motion.expressive()) + androidx.compose.animation.fadeIn()
                 ) {
                     val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
                     val isPressed by interactionSource.collectIsPressedAsState()
-                    val scale by androidx.compose.animation.core.animateFloatAsState(
-                        targetValue = if (isPressed) 0.92f else 1f,
-                        animationSpec = spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy, stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
-                        label = "toolScale"
-                    )
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(160.dp)
-                            .graphicsLayer { scaleX = scale; scaleY = scale }
+                            .pressScale(interactionSource)
                             .clickable(
                                 interactionSource = interactionSource,
                                 indication = androidx.compose.foundation.LocalIndication.current

@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.entity.ScanRecordEntity
+import com.example.ui.theme.Motion
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -94,7 +95,9 @@ fun ReportsScreen(
                 itemsIndexed(activeThreats) { index, threat ->
                     var itemVisible by remember { mutableStateOf(false) }
                     LaunchedEffect(Unit) {
-                        kotlinx.coroutines.delay(index * 150L)
+                        kotlinx.coroutines.delay(
+                            index.coerceIn(0, Motion.StaggerMaxSteps) * Motion.StaggerStep.toLong()
+                        )
                         itemVisible = true
                     }
                     AnimatedVisibility(
@@ -176,7 +179,9 @@ fun ReportsScreen(
                 itemsIndexed(reversedHistory) { index, record ->
                     var itemVisible by remember { mutableStateOf(false) }
                     LaunchedEffect(Unit) {
-                        kotlinx.coroutines.delay(index * 100L)
+                        kotlinx.coroutines.delay(
+                            index.coerceIn(0, Motion.StaggerMaxSteps) * Motion.StaggerStep.toLong()
+                        )
                         itemVisible = true
                     }
                     AnimatedVisibility(

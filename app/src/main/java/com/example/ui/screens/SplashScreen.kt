@@ -14,6 +14,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.Motion
+import com.example.ui.theme.reduceMotion
 import kotlinx.coroutines.delay
 
 @Composable
@@ -31,6 +33,14 @@ fun SplashScreen(onFinish: () -> Unit) {
     var blink by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
+        // Hareket azaltma açıksa daktilo etkisi oynamaz: satırlar tek seferde
+        // yazılır, yalnızca sabit kısa bir bekleme kalır.
+        if (reduceMotion) {
+            displayedText = lines.joinToString(separator = "\n") + "\n"
+            delay(Motion.Slow.toLong())
+            onFinish()
+            return@LaunchedEffect
+        }
         // Toplam geçiş süresini tam 1.0 saniye (1000ms) yapacak şekilde ayarlıyoruz.
         // 6 satır x 135ms = 810ms + 190ms bekleme = 1000ms
         for (i in lines.indices) {
@@ -43,6 +53,9 @@ fun SplashScreen(onFinish: () -> Unit) {
     }
 
     LaunchedEffect(Unit) {
+        // İmleç yanıp sönmesi de döngüsel bir animasyondur; azaltan kullanıcıda
+        // imleç sürekli görünür kalır (blink başlangıç değeri true).
+        if (reduceMotion) return@LaunchedEffect
         while(true) {
             blink = !blink
             delay(180)

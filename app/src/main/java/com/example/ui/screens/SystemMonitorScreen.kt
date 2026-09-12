@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.theme.Motion
 import com.example.ui.viewmodel.AntivirusViewModel
 import com.example.ui.viewmodel.SystemAppInfo
 
@@ -82,7 +83,9 @@ fun SystemMonitorScreen(
                 itemsIndexed(systemApps, key = { _, app -> app.packageName }) { index, app ->
                     var itemVisible by remember { mutableStateOf(false) }
                     LaunchedEffect(app.packageName) {
-                        kotlinx.coroutines.delay(index * 70L)
+                        kotlinx.coroutines.delay(
+                            index.coerceIn(0, Motion.StaggerMaxSteps) * Motion.StaggerStep.toLong()
+                        )
                         itemVisible = true
                     }
                     

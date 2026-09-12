@@ -25,6 +25,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import com.example.ui.theme.Motion
+import com.example.ui.theme.reduceMotion
 import kotlin.math.*
 
 private data class GeoNode(val lat: Float, val lon: Float, val continent: Int)
@@ -32,8 +34,13 @@ private data class GeoNode(val lat: Float, val lon: Float, val continent: Int)
 @Composable
 fun TypewriterText(text: String, modifier: Modifier = Modifier, color: Color, fontSize: androidx.compose.ui.unit.TextUnit, fontFamily: FontFamily = FontFamily.Monospace) {
     var displayedText by remember { mutableStateOf("") }
-    
+
     LaunchedEffect(text) {
+        // Hareket azaltma açıksa daktilo etkisi atlanır: metin tek seferde yazılır.
+        if (reduceMotion) {
+            displayedText = text
+            return@LaunchedEffect
+        }
         displayedText = ""
         for (i in text.indices) {
             displayedText += text[i]
@@ -62,75 +69,84 @@ fun CyberGlobeScanner(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val reduce = reduceMotion
     val infiniteTransition = rememberInfiniteTransition(label = "GlobeTransitions")
+
+    // Hareket azaltma açıksa hiçbir döngü başlamaz; her faz son karesinde donar.
+    // Döngü süreleri birer geçiş değil, etkinin kendi ritmidir (bkz. Motion.loop).
 
     // Rotation speed: smooth & stately when idle, fast and energetic when scanning
     val rotationDuration = if (isScanning) 4000 else 16000
-    val globeRotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(rotationDuration, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "GlobeRotation"
-    )
+    val globeRotation by if (reduce) {
+        remember { mutableFloatStateOf(0f) }
+    } else {
+        infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = Motion.loop(rotationDuration),
+            label = "GlobeRotation"
+        )
+    }
 
     // Radar sweep rotation
-    val radarAngle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(if (isScanning) 2200 else 7000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "RadarAngle"
-    )
+    val radarAngle by if (reduce) {
+        remember { mutableFloatStateOf(0f) }
+    } else {
+        infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = Motion.loop(if (isScanning) 2200 else 7000),
+            label = "RadarAngle"
+        )
+    }
 
     // Vertical scanning laser slice
-    val scanSlicePhase by infiniteTransition.animateFloat(
-        initialValue = -1.15f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "ScanSlicePhase"
-    )
+    val scanSlicePhase by if (reduce) {
+        remember { mutableFloatStateOf(0f) }
+    } else {
+        infiniteTransition.animateFloat(
+            initialValue = -1.15f,
+            targetValue = 1.15f,
+            animationSpec = Motion.pulse(4500),
+            label = "ScanSlicePhase"
+        )
+    }
 
     // Atmospheric pulse
-    val atmospherePulse by infiniteTransition.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "AtmospherePulse"
-    )
+    val atmospherePulse by if (reduce) {
+        remember { mutableFloatStateOf(1f) }
+    } else {
+        infiniteTransition.animateFloat(
+            initialValue = 0.85f,
+            targetValue = 1.15f,
+            animationSpec = Motion.pulse(2000),
+            label = "AtmospherePulse"
+        )
+    }
 
     // Smooth scan fade
     val scanAlpha by animateFloatAsState(
         targetValue = if (isScanning) 1f else 0f,
-        animationSpec = tween(800),
+        animationSpec = if (reduce) snap() else tween(Motion.Emphasized, easing = Motion.Standard_Easing),
         label = "ScanAlpha"
     )
 
     // Alert pulse for threats
-    val alertPulse by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "AlertPulse"
-    )
+    val alertPulse by if (reduce) {
+        remember { mutableFloatStateOf(0.7f) }
+    } else {
+        infiniteTransition.animateFloat(
+            initialValue = 0.4f,
+            targetValue = 1f,
+            animationSpec = Motion.pulse(800),
+            label = "AlertPulse"
+        )
+    }
 
     // Shield formation phase for safe state
     val shieldPhase by animateFloatAsState(
         targetValue = if (!isScanning && activeThreatsCount == 0) 1f else 0f,
-        animationSpec = tween(1500, easing = FastOutSlowInEasing),
+        animationSpec = if (reduce) snap() else tween(Motion.Slow, easing = Motion.Enter),
         label = "ShieldPhase"
     )
 

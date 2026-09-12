@@ -18,11 +18,12 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.theme.Motion
+import com.example.ui.theme.reduceMotion
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.BorderStroke
@@ -189,31 +190,33 @@ fun NetworkScreen(modifier: Modifier = Modifier) {
 
         val vpnScale by animateFloatAsState(
             targetValue = if (dnsActive) 1.03f else 1.0f,
-            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+            animationSpec = Motion.expressive(),
             label = "vpnScale"
         )
         val vpnColor by animateColorAsState(
             targetValue = if (dnsActive) Color(0xFF003D2E) else MaterialTheme.colorScheme.surface,
-            animationSpec = spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy, stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
+            animationSpec = Motion.expressive(),
             label = "vpnColor"
         )
         val vpnBorderColor by animateColorAsState(
             targetValue = if (dnsActive) Color(0xFF10B981) else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-            animationSpec = spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy, stiffness = androidx.compose.animation.core.Spring.StiffnessLow),
+            animationSpec = Motion.expressive(),
             label = "vpnBorderColor"
         )
 
-        // VPN Pulse Shield
-        val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition()
-        val shieldPulse by infiniteTransition.animateFloat(
-            initialValue = 1f,
-            targetValue = if (dnsActive) 1.2f else 1f,
-            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                animation = tween(1500, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-            ),
-            label = "shieldPulse"
-        )
+        // VPN Pulse Shield — yalnızca kalkan aktifken ve hareket azaltma kapalıyken
+        // çalışır; eskiden kapalıyken de boşta nabız animasyonu sürüyordu.
+        val shieldPulse by if (dnsActive && !reduceMotion) {
+            androidx.compose.animation.core.rememberInfiniteTransition(label = "vpnPulse")
+                .animateFloat(
+                    initialValue = 1f,
+                    targetValue = 1.2f,
+                    animationSpec = Motion.pulse(1500),
+                    label = "shieldPulse"
+                )
+        } else {
+            remember { mutableFloatStateOf(1f) }
+        }
         
         // DNS Toggle Card
         Card(
