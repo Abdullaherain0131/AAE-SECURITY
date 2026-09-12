@@ -101,6 +101,28 @@
                 android:resource="@xml/singularity_widget_info" />
         </receiver>
 
+        <!-- Quick Scan Widget (1x1) -->
+        <receiver android:name=".widget.QuickScanWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_scan_widget_info" />
+        </receiver>
+
+        <!-- Mini Status Widget (2x1) -->
+        <receiver android:name=".widget.MiniStatusWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/mini_status_widget_info" />
+        </receiver>
+
         <!-- Boot Completed Receiver to restore protection -->
         <receiver
             android:name=".receiver.BootReceiver"

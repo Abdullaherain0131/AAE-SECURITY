@@ -157,6 +157,17 @@ class RealTimeProtectionService : Service() {
                     applicationContext.sendBroadcast(intent)
                 }
 
+                // Update Mini Status Widget
+                val miniIntent = Intent(applicationContext, com.example.widget.MiniStatusWidgetProvider::class.java).apply {
+                    action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                }
+                val miniIds = android.appwidget.AppWidgetManager.getInstance(applicationContext)
+                    .getAppWidgetIds(android.content.ComponentName(applicationContext, com.example.widget.MiniStatusWidgetProvider::class.java))
+                if (miniIds.isNotEmpty()) {
+                    miniIntent.putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_IDS, miniIds)
+                    applicationContext.sendBroadcast(miniIntent)
+                }
+
                 if (isLowBattery && !wasThrottled) {
                     wasThrottled = true
                     val repository = (applicationContext as AntivirusApplication).repository

@@ -44,6 +44,29 @@ class MainActivity : ComponentActivity() {
                     startActivity(intent)
                 } catch (e: Exception) {}
             }
+
+            if (!android.provider.Settings.canDrawOverlays(this)) {
+                try {
+                    val overlayIntent = android.content.Intent(
+                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:$packageName")
+                    )
+                    startActivity(overlayIntent)
+                } catch (e: Exception) {}
+            }
+        }
+
+        // Check and request Usage Stats permission
+        val appOps = getSystemService(android.content.Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+        val mode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+        } else {
+            appOps.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+        }
+        if (mode != android.app.AppOpsManager.MODE_ALLOWED) {
+            try {
+                startActivity(android.content.Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS))
+            } catch (e: Exception) {}
         }
 
         setContent {
