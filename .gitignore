@@ -14,17 +14,18 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Ortam değişkenleri — şablon olarak yalnızca .env.example işlenir
 .env
 .env.local
 
-# Keystores — never commit signing keys
+# Keystores — imza anahtarları asla işlenmez
 *.jks
 *.keystore
 !debug.keystore
 
-# Python
+# Geçmişte kök dizinde biriken geliştirme artıkları
 __pycache__/
 *.pyc
 *.py
-*.py
-*.pyc
+venv/
