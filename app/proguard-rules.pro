@@ -19,3 +19,9 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+-keep class com.example.** { *; }
+-keep class androidx.compose.** { *; }
+-keep class androidx.security.** { *; }
+-keep class dev.rikka.shizuku.** { *; }
+-dontwarn androidx.**
+-dontwarn com.google.**
