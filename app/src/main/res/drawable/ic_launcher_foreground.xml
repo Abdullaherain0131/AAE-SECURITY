@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Outer Shield Outline (Glowing Cyan) -->
+    <path
+        android:strokeColor="#00E676"
+        android:strokeWidth="2.5"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round"
+        android:pathData="M54,18 L26,30 V56 C26,76 38,94 54,102 C70,94 82,76 82,56 V30 Z" />
+
+    <!-- Inner Shield Solid (Darker gray/teal) -->
+    <path
+        android:fillColor="#161B22"
+        android:pathData="M54,23 L31,33 V56 C31,73 40,88 54,95 C68,88 77,73 77,56 V33 Z" />
+        
+    <!-- AI Neural Node 1 -->
+    <path
+        android:fillColor="#00E676"
+        android:pathData="M54,42 A4,4 0,1 1,54 50 A4,4 0,1 1,54 42" />
+
+    <!-- AI Neural Node 2 -->
+    <path
+        android:fillColor="#00E676"
+        android:pathData="M43,62 A3,3 0,1 1,43 68 A3,3 0,1 1,43 62" />
+
+    <!-- AI Neural Node 3 -->
+    <path
+        android:fillColor="#00E676"
+        android:pathData="M65,62 A3,3 0,1 1,65 68 A3,3 0,1 1,65 62" />
+        
+    <!-- Connections -->
+    <path
+        android:strokeColor="#00E676"
+        android:strokeWidth="1.5"
+        android:pathData="M51,48 L45,63" />
+    <path
+        android:strokeColor="#00E676"
+        android:strokeWidth="1.5"
+        android:pathData="M57,48 L63,63" />
+    <path
+        android:strokeColor="#00E676"
+        android:strokeWidth="1.5"
+        android:pathData="M46,65 L62,65" />
+</vector>

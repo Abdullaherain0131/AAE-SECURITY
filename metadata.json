@@ -1,0 +1,6 @@
+{
+  "name": "AAE Security",
+  "description": "Gerçek zamanlı koruma ve derin tehdit taraması sağlayan gelişmiş Android antivirüs güvenlik kalkanı.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

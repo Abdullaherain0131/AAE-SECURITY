@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Background Slate -->
+    <path
+        android:fillColor="#040B16"
+        android:pathData="M0,0h24v24h-24z" />
+    
+    <!-- Outer Glow (Simulated by lower alpha stroke) -->
+    <path
+        android:strokeColor="#3300E5FF"
+        android:strokeWidth="2.5"
+        android:strokeLineJoin="round"
+        android:pathData="M12,1L3,5v6c0,5.55 3.84,10.74 9,12c5.16,-1.26 9,-6.45 9,-12V5l-9,-4z" />
+        
+    <!-- Main Neon Shield Stroke -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="1.5"
+        android:strokeLineJoin="round"
+        android:pathData="M12,1L3,5v6c0,5.55 3.84,10.74 9,12c5.16,-1.26 9,-6.45 9,-12V5l-9,-4z" />
+        
+    <!-- Inner Accent (Neon Green) -->
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M12,5l-5,2.22v3.78c0,3.31 2.05,6.34 5,7.22c2.95,-0.88 5,-3.91 5,-7.22V7.22L12,5z" />
+</vector>

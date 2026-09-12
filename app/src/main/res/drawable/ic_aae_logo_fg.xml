@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Outer Shield Outline -->
+    <path
+        android:pathData="M54,12 L24,24 L24,54 C24,75 36,92 54,100 C72,92 84,75 84,54 L84,24 Z"
+        android:strokeWidth="3"
+        android:strokeColor="#94A3B8"
+        android:fillColor="#00000000" />
+        
+    <!-- Inner Shield Line -->
+    <path
+        android:pathData="M54,18 L30,28 L30,52 C30,68 39,82 54,88 C69,82 78,68 78,52 L78,28 Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#334155"
+        android:fillColor="#00000000" />
+        
+    <!-- AAE Monogram inside -->
+    <path
+        android:pathData="M40,65 L46,35 L50,35 L56,65 L52,65 L49,50 L43,50 L40,65 Z M44,46 L48,46 L46,38 Z M58,65 L58,35 L68,35 L68,39 L62,39 L62,48 L66,48 L66,52 L62,52 L62,61 L68,61 L68,65 Z"
+        android:fillColor="#F8FAFC" />
+</vector>
